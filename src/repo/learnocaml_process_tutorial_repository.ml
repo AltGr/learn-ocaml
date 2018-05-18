@@ -26,7 +26,8 @@ let tutorials_index = ref None
 
 let args = Arg.align @@
   [ "-tutorials-dir", Arg.Set_string tutorials_dir,
-    "PATH path to the tutorial repository (default: [./tutorials])" ;
+    (Printf.sprintf
+       "PATH path to the tutorial repository (default: [%s])" !tutorials_dir);
     "-tutorials-index", Arg.String (fun fn -> tutorials_index := Some fn),
     "PATH path to the tutorials index (default: [<tutorials-dir>/index.json])" ]
 
