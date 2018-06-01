@@ -1,0 +1,3 @@
+comp += [ "-g" ]
+link += [ "-g" ]
+jsoo_flags = [ "--pretty" "--debug-info" ]

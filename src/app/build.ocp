@@ -39,6 +39,7 @@ begin program "learnocaml-main"
       sources = %byte_exe( p = "learnocaml-main" )
       commands = [ {
         "js_of_ocaml"
+           jsoo_flags
            "+cstruct/cstruct.js"
            "%{ace_FULL_SRC_DIR}%/ace_bindings.js"
            %byte_exe( p = "learnocaml-main" )
@@ -68,6 +69,7 @@ begin program "learnocaml-exercise"
       sources = %byte_exe( p = "learnocaml-exercise" )
       commands = [ {
         "js_of_ocaml"
+           jsoo_flags
            "+cstruct/cstruct.js"
            "%{ace_FULL_SRC_DIR}%/ace_bindings.js"
            %byte_exe( p = "learnocaml-exercise" )
