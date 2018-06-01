@@ -19,6 +19,7 @@ begin program "learnocaml-toplevel-worker"
       sources = %byte_exe( p = "learnocaml-toplevel-worker" )
       commands = [ {
         "js_of_ocaml"
+           jsoo_flags
            "+dynlink.js"
            "+toplevel.js"
            "--toplevel"
