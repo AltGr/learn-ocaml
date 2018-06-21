@@ -19,6 +19,8 @@ let static_dir = ref (Filename.concat (Sys.getcwd ()) "www")
 
 let sync_dir = ref (Filename.concat (Sys.getcwd ()) "sync")
 
+let auth_file () = Filename.concat !sync_dir "auth.json"
+
 let port = ref 8080
 
 let args = Arg.align @@
@@ -28,6 +30,16 @@ let args = Arg.align @@
     "PATH where sync tokens are stored (./sync)" ;
     "-port", Arg.Set_int port,
     "PORT the TCP port (8080)" ]
+
+type teacher = {
+  teacher_login: string;
+  teacher_password: string;
+}
+
+type auth = {
+  mutable one_time_token: string option;
+  mutable teachers: teacher list;
+}
 
 open Lwt.Infix
 
@@ -87,6 +99,53 @@ let rec gimme () =
     create_token_file token >|= fun () ->
     Learnocaml_sync.Token.to_string token
 
+let auth_encoding =
+  let open Json_encoding in
+  let teacher_encoding =
+    obj2
+      (req "login" string)
+      (req "password" string)
+    |> conv
+      (fun {teacher_login; teacher_password} ->
+         teacher_login, teacher_password)
+      (fun (teacher_login, teacher_password) ->
+         {teacher_login; teacher_password})
+  in
+  list teacher_encoding |> conv
+    (fun { one_time_token = _; teachers } -> teachers)
+    (fun teachers -> { one_time_token = None; teachers })
+
+let read_auth file =
+  let open Lwt_io in
+  with_file ~mode:Input file @@ fun ic ->
+  read ic >|= fun str ->
+  (Ezjsonm.from_string str |>
+   Json_encoding.destruct auth_encoding)
+
+let write_auth file auth =
+  let open Lwt_io in
+  with_file ~mode:Output file @@ fun oc ->
+  Json_encoding.construct auth_encoding auth |> function
+  | `O _ | `A _ as json ->
+      write oc (Ezjsonm.to_string json)
+  | _ -> assert false
+
+let get_auth ?(url="URL") () =
+  let f = auth_file () in
+  Lwt_unix.file_exists f >>= function
+  | true -> read_auth f
+  | false ->
+      let rand _ = String.get alphabet (Random.int (String.length alphabet)) in
+      let token = String.init 18 rand in
+      let auth = {
+        one_time_token = Some token;
+        teachers = [];
+      } in
+      write_auth f auth >|= fun () ->
+      Printf.printf
+        "Use %s/first-login/%s to initialise a teacher account.\n%!"
+        url token;
+      auth
 
 exception Too_long_body
 
@@ -114,7 +173,7 @@ let string_of_stream ?(max_size = 64 * 1024) s =
 let launch () =
   let open Lwt in
   let open Cohttp_lwt_unix in
-  let callback _ req body =
+  let callback auth _ req body =
     let path = Uri.path (Request.uri req) in
     let path = Stringext.split ~on:'/' path in
     let path = List.filter ((<>) "") path in
@@ -130,6 +189,7 @@ let launch () =
            Server.respond_string ~headers ~status:`OK ~body ())
         (fun _ ->
            Server.respond_not_found ()) in
+    let cookies = Cohttp.Cookie.Cookie_hdr.extract (Cohttp.Request.headers req) in
     match Request.meth req, path with
     | `GET, [] ->
         respond_static [ "index.html" ]
@@ -156,9 +216,52 @@ let launch () =
             else
               Server.respond_string ~status:`Bad_request ~body: "Invalid save file" ()
       end
+    | `GET, ["first-login"; token] ->
+        if Some token = auth.one_time_token then
+          (auth.one_time_token <- None;
+           Server.respond_string ~status:`OK ~body: "Logged in!" ())
+        else
+          Server.respond_error ~status:`Forbidden
+            ~body: "Invalid credentials" ()
+    | `GET, ("teacher" :: _ as path) -> assert false
+(*
+        let validate_cookie _ =
+          Cohttp.Request.resource req = auth.admin_token
+        in
+        (match validate_cookie (List.assoc "teacher_token" cookies) with
+         | true ->
+             Server.respond_string ~status:`OK ~body: "Teacher alright." ()
+         | false ->
+             Server.respond_error ~status:`Forbidden
+               ~body: "Invalid credentials" ()
+         | exception (Not_found | Failure _) ->
+             Server.respond_error ~status:`Forbidden
+               ~body: "Authentication required" ())
+*)
+
+(*
+    | `POST, [ "tokens_list" ] ->
+        (match admin_auth with
+         | None ->
+             Server.respond_error ~status:`Not_found
+               ~body: "No admin credentials configured"
+         | Some (login, pass) ->
+             (Server.respond_need_auth ~auth:(`Basic "Is this my realm ?") ()
+              >>= fun (resp, _body) ->
+              match Cohttp.Header.get_authorization (Cohttp.Response.headers resp) with
+              | None -> Server.respond_error ~status:`Forbidden
+                          ~body: "Authentication required" ()
+              | Some a -> Server.respond_static [ "index.html" ]
+
+         match Cohttp.Auth.credential_of_string body
+when passwd = Digest.to_hex ->
+        
+*)
     | `GET, path -> respond_static path
     | _ -> Server.respond_error ~status: `Bad_request ~body: "Bad request" () in
   Random.self_init () ;
+  get_auth () >>= fun auth ->
+  let callback = callback auth in
   Lwt.catch (fun () ->
       Server.create
         ~on_exn: (function
