@@ -37,7 +37,7 @@ type teacher = {
 }
 
 type auth = {
-  mutable one_time_token: string option;
+  mutable one_time_token: Learnocaml_sync.Token.t option;
   mutable teachers: teacher list;
 }
 
@@ -135,8 +135,7 @@ let get_auth ?(url="URL") () =
   Lwt_unix.file_exists f >>= function
   | true -> read_auth f
   | false ->
-      let rand _ = String.get alphabet (Random.int (String.length alphabet)) in
-      let token = String.init 18 rand in
+      let token = Learnocaml_sync.Token.random ~admin:true () in
       let auth = {
         one_time_token = Some token;
         teachers = [];
@@ -144,7 +143,7 @@ let get_auth ?(url="URL") () =
       write_auth f auth >|= fun () ->
       Printf.printf
         "Use %s/first-login/%s to initialise a teacher account.\n%!"
-        url token;
+        url (Learnocaml_sync.Token.to_string token);
       auth
 
 exception Too_long_body
@@ -217,7 +216,7 @@ let launch () =
               Server.respond_string ~status:`Bad_request ~body: "Invalid save file" ()
       end
     | `GET, ["first-login"; token] ->
-        if Some token = auth.one_time_token then
+        if Some (Learnocaml_sync.Token.parse token) = auth.one_time_token then
           (auth.one_time_token <- None;
            Server.respond_string ~status:`OK ~body: "Logged in!" ())
         else
