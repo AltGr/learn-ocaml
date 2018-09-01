@@ -393,6 +393,15 @@ let launch () =
     >>=
     respond
   in
+  let mode =
+    if false then (`TCP (`Port !port))
+    else `TLS (
+        `Crt_file_path "cert.pem",
+        `Key_file_path "key.pem",
+        `No_password,
+        `Port !port (* 8443 *)
+      )
+  in
   Random.self_init () ;
   init_teacher_token () >>= fun () ->
   Lwt.catch (fun () ->
@@ -400,7 +409,7 @@ let launch () =
         ~on_exn: (function
             | Unix.Unix_error(Unix.EPIPE, "write", "") -> ()
             | exn -> raise exn)
-        ~mode:(`TCP (`Port !port)) (Server.make ~callback ()) >>= fun () ->
+        ~mode (Server.make ~callback ()) >>= fun () ->
       Lwt.return true)
   @@ function
   | Sys.Break ->
