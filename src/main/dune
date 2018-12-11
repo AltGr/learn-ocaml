@@ -1,6 +1,7 @@
 (library
- (name learnocaml_server_args)
- (modules Learnocaml_server_args)
+ (name learnocaml_config)
+ (modules Learnocaml_config_file Learnocaml_server_args)
+ (wrapped false)
  (libraries cmdliner
             learnocaml_server_lib)
 )
@@ -15,7 +16,7 @@
  (libraries cmdliner
             learnocaml_process_repository_lib
             learnocaml_server_lib
-            learnocaml_server_args
+            learnocaml_config
             learnocaml_report)
 )
 
@@ -39,5 +40,5 @@
  (public_name learn-ocaml-server)
  (name learnocaml_server_main)
  (modules learnocaml_server_main)
- (libraries learnocaml_server_args)
+ (libraries learnocaml_config)
 )

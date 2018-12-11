@@ -42,27 +42,31 @@ let port =
        default_http_port default_https_port)
 
 type t = {
-  sync_dir: string;
   cert: string option;
   port: int;
 }
 
-let term app_dir =
-  let apply app_dir sync_dir port cert =
-    Learnocaml_store.static_dir := app_dir;
-    Learnocaml_store.sync_dir := sync_dir;
+module CF = Learnocaml_config_file
+
+let apply t ~config_file:cf ~sync_dir ~app_dir =
+  let ( + ) opt cfg = match opt with None -> cfg | some -> some in
+  Learnocaml_store.static_dir := app_dir + cf.CF.app_dir;
+  Learnocaml_store.sync_dir := sync_dir + cf.CF.sync_dir;
+  Learnocaml_server.cert_key_files :=
+    (match t.cert + cf.CF.cert with
+     | Some base -> Some (base ^ ".pem", base ^ ".key");
+     | None -> None);
+  Learnocaml_server.port := t.port
+
+let term =
+  let apply port cert =
     let port = match port, cert with
       | Some p, _ -> p
       | None, Some _ -> default_https_port
       | None, None -> default_http_port
     in
-    Learnocaml_server.cert_key_files :=
-      (match cert with
-       | Some base -> Some (base ^ ".pem", base ^ ".key");
-       | None -> None);
-    Learnocaml_server.port := port;
-    { sync_dir; port; cert }
+    { port; cert }
   in
   (* warning: if you add any options here, remember to pass them through when
      calling the native server from learn-ocaml main *)
-  Term.(const apply $app_dir $sync_dir $port $cert)
+  Term.(const apply $port $cert)

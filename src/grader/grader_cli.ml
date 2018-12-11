@@ -15,15 +15,31 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
-let display_std_outputs = ref false
-let dump_outputs = ref None
-let dump_reports = ref None
-let display_callback = ref false
-let display_outcomes = ref false
-let grade_student = ref None
-let individual_timeout = ref None
-let display_reports = ref false
-let dump_dot = ref None
+type config = {
+  display_std_outputs: bool;
+  dump_outputs: string option;
+  dump_reports: string option;
+  display_callback: bool;
+  display_outcomes: bool;
+  grade_student: string option;
+  individual_timeout: int option;
+  display_reports: bool;
+  dump_dot: string option;
+}
+
+let default_config = {
+  display_std_outputs = false;
+  dump_outputs = None;
+  dump_reports = None;
+  display_callback = false;
+  display_outcomes = false;
+  grade_student = None;
+  individual_timeout = None;
+  display_reports = false;
+  dump_dot = None;
+}
+
+let config = ref default_config
 
 open Lwt.Infix
 
@@ -59,13 +75,14 @@ let read_student_file exercise_dir path =
 let grade ?(print_result=false) ?dirname exercise output_json =
   Lwt.catch
     (fun () ->
-       let code_to_grade = match !grade_student with
+       let code_to_grade = match !config.grade_student with
          | Some path -> read_student_file (Sys.getcwd ()) path
          | None ->
              Lwt.return (Learnocaml_exercise.(decipher File.solution exercise)) in
        let callback =
-         if !display_callback then Some (Printf.eprintf "[ %s ]%!\r\027[K") else None in
-       let timeout = !individual_timeout in
+         if !config.display_callback then
+           Some (Printf.eprintf "[ %s ]%!\r\027[K") else None in
+       let timeout = !config.individual_timeout in
        code_to_grade >>= fun code ->
        Grading_cli.get_grade ?callback ?timeout ?dirname exercise code
        >>= fun (result, stdout_contents, stderr_contents, outcomes) ->
@@ -88,7 +105,7 @@ let grade ?(print_result=false) ?dirname exercise output_json =
              if outcomes <> "" then begin
                Format.fprintf ppf "grader outcomes:@.%s@." outcomes
              end in
-           begin match !dump_outputs with
+           begin match !config.dump_outputs with
              | None -> ()
              | Some prefix ->
                  let oc = open_out (prefix ^ ".error") in
@@ -99,9 +116,9 @@ let grade ?(print_result=false) ?dirname exercise output_json =
            Lwt.return (Error (-1))
        | Ok report ->
            let (max, failure) = Learnocaml_report.result report in
-           if !display_reports then
+           if !config.display_reports then
              Learnocaml_report.print (Format.formatter_of_out_channel stderr) report;
-           begin match !dump_reports with
+           begin match !config.dump_reports with
              | None -> ()
              | Some prefix ->
                  let oc = open_out (prefix ^ ".report.txt") in
@@ -112,36 +129,36 @@ let grade ?(print_result=false) ?dirname exercise output_json =
                  close_out oc
            end ;
            if stderr_contents <> "" then begin
-             begin match !dump_outputs with
+             begin match !config.dump_outputs with
                | None -> ()
                | Some prefix ->
                    let oc = open_out (prefix ^ ".stderr") in
                    output_string oc stderr_contents ;
                    close_out oc
              end ;
-             if !display_std_outputs then
+             if !config.display_std_outputs then
                Format.eprintf "%s" stderr_contents
            end ;
            if stdout_contents <> "" then begin
-             begin match !dump_outputs with
+             begin match !config.dump_outputs with
                | None -> ()
                | Some prefix ->
                    let oc = open_out (prefix ^ ".stdout") in
                    output_string oc stdout_contents ;
                    close_out oc
              end ;
-             if !display_std_outputs then
+             if !config.display_std_outputs then
                Format.printf "%s" stdout_contents
            end ;
            if outcomes <> "" then begin
-             begin match !dump_outputs with
+             begin match !config.dump_outputs with
                | None -> ()
                | Some prefix ->
                    let oc = open_out (prefix ^ ".outcomes") in
                    output_string oc outcomes ;
                    close_out oc
              end ;
-             if !display_outcomes then
+             if !config.display_outcomes then
                Format.printf "%s" outcomes
            end ;
            if failure then begin
@@ -172,7 +189,7 @@ let grade ?(print_result=false) ?dirname exercise output_json =
                  Lwt.return (Ok ())
            end)
     (fun exn ->
-       begin match !dump_outputs with
+       begin match !config.dump_outputs with
          | None -> ()
          | Some prefix ->
              let oc = open_out (prefix ^ ".error") in

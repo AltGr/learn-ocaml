@@ -16,9 +16,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
 type t = {
-  sync_dir: string;
   cert: string option;
   port: int;
 }
 
-val term: string Cmdliner.Term.t -> t Cmdliner.Term.t
+val term: t Cmdliner.Term.t
+
+val apply: t -> sync_dir:string -> app_dir:string -> unit
+
+val sync_dir: string Cmdliner.Term.t

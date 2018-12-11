@@ -15,36 +15,31 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
-(** {2 Configuration options} *)
+type config = {
+  display_std_outputs: bool;
+  (** Should stdout / stderr of the grader be echoed *)
+  dump_outputs: string option;
+  (** Should outputs of the grader be saved and where *)
+  dump_reports: string option;
+  (** Should the reports be saved and where *)
+  display_callback: bool;
+  (** Should the message from 'test.ml' be displayed on stdout ? *)
+  display_outcomes: bool;
+  (** Should compiler outcome be printed ? *)
+  grade_student: string option;
+  (** Should the tool grade a student file instead of 'solution.ml' ? *)
+  individual_timeout: int option;
+  (** Should each test be run with a specific timeout (in secs) ? *)
+  display_reports: bool;
+  (** Display reports to stderr *)
+  dump_dot: string option;
+  (** Should the tool generate and dump a dependency graph of the exercises and
+      where *)
+}
 
-(** Should stdout / stderr of the grader be echoed *)
-val display_std_outputs: bool ref
+val default_config: config
 
-(** Should outputs of the grader be saved and where *)
-val dump_outputs: string option ref
-
-(** Should the reports be saved and where *)
-val dump_reports: string option ref
-
-(** Should the message from 'test.ml' be displayed on stdout ? *)
-val display_callback: bool ref
-
-(** Should compiler outcome be printed ? *)
-val display_outcomes: bool ref
-
-(** Should the tool grade a student file instead of 'solution.ml' ? *)
-val grade_student: string option ref
-
-(** Should each test be run with a specific timeout (in secs) ? *)
-val individual_timeout: int option ref
-
-(** Display reports to stderr *)
-val display_reports: bool ref
-
-(** Should the tool generate and dump a dependency graph of the exercises and where *)
-val dump_dot: string option ref
-
-(** {2 Functions} *)
+val config: config ref
 
 (** Runs the grading process *)
 val grade:

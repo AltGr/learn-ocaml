@@ -404,8 +404,8 @@ end
     containing the code *)
 val js_code_url: string -> string
 
-(* (\** Wrapper for [Worker.create] that uses JS code as a string instead of a URL*\)
- * val worker_with_code: string -> ('a, 'b) Worker.worker Js.t
- * 
- * (\** Similar to [Worker.create], but retrieves the js file manually *\)
- * val worker: string -> ('a, 'b) Worker.worker Js.t Lwt.t *)
+(** Wrapper for [Worker.create] that uses JS code as a string instead of a URL*)
+val worker_with_code: string -> ('a, 'b) Worker.worker Js.t
+
+(** Similar to [Worker.create], but retrieves the js file manually *)
+val worker: string -> ('a, 'b) Worker.worker Js.t Lwt.t

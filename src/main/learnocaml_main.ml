@@ -36,6 +36,8 @@ module Args = struct
   open Cmdliner
   open Arg
 
+  module CF = Learnocaml_config_file
+
   type command = Grade | Build | Serve
 
   let commands =
@@ -46,21 +48,30 @@ module Args = struct
       ]) [Build; Serve] &
     info [] ~docs:"COMMANDS" ~docv:"COMMAND"
 
+  let config_file =
+    value & opt (some file) None &
+    info ["config"; "c"] ~docv:"FILE" ~doc:
+      (Printf.sprintf "Json file containing the configuration to use, instead \
+                       of $(b,%s). See $(i,CONFIGURATION FILE)."
+         CF.default_filename)
+
   let repo_dir =
-    value & opt dir "." & info ["repo"] ~docv:"DIR" ~doc:
+    value & opt (some dir) None & info ["repo"] ~docv:"DIR" ~doc:
       "The path to the repository containing the exercises, lessons and \
-       tutorials."
+       tutorials. Defaults to the current directory."
 
   let app_dir =
-    value & opt string "./www" & info ["app-dir"; "o"] ~docv:"DIR" ~doc:
+    value & opt (some string) None & info ["app-dir"; "o"] ~docv:"DIR" ~doc:
       "Directory where the app should be generated for the $(i,build) command, \
-       and from where it is served by the $(i,serve) command."
+       and from where it is served by the $(i,serve) command. Defaults to \
+       $(b,www/), below the current directory."
 
   module Grader = struct
     let info = info ~docs:"GRADER OPTIONS"
 
     let exercises =
-      value & opt_all (list dir) [["."]] & info ["exercises";"e"] ~docv:"DIRS" ~doc:
+      value & opt_all (list dir) [["."]] &
+      info ["exercises";"e"] ~docv:"DIRS" ~doc:
         "Directories where to find the exercises to be graded \
          (comma-separated). Can be repeated."
 
@@ -70,7 +81,8 @@ module Args = struct
          in the given directory."
 
     let grade_student =
-      value & opt (some file) None & info ["grade-student";"s"] ~docv:"FILE" ~doc:
+      value & opt (some file) None &
+      info ["grade-student";"s"] ~docv:"FILE" ~doc:
         "grade the given student file instead of 'solution.ml'"
 
     let display_outcomes =
@@ -86,11 +98,13 @@ module Args = struct
         "display the toplevel's standard outputs"
 
     let dump_outputs =
-      value & opt (some string) None & info ["dump-outputs"] ~docv:"PREFIX" ~doc:
+      value & opt (some string) None &
+      info ["dump-outputs"] ~docv:"PREFIX" ~doc:
         "save the outputs in files with the given prefix"
 
     let dump_reports =
-      value & opt (some string) None & info ["dump-reports"] ~docv:"PREFIX" ~doc:
+      value & opt (some string) None &
+      info ["dump-reports"] ~docv:"PREFIX" ~doc:
         "save the reports in files with the given prefix"
 
     let timeout =
@@ -170,13 +184,16 @@ module Args = struct
         "the 'Toplevel' tab (enabled by default)"
 
     let exercises_filtered =
-      value & opt_all (list string) [[]] & info ["exercises-filtered"; "f"] ~docv:"DIRS" ~doc:
+      value & opt_all (list string) [[]] &
+      info ["exercises-filtered"; "f"] ~docv:"DIRS" ~doc:
         "Exercises to build (comma-separated), instead of taking \
          the entire repository. Can be repeated."
 
     let jobs =
-      value & opt int 1 & info ["jobs";"j"] ~docv:"INT" ~doc:
-        "Number of building jobs to run in parallel"
+      value & opt (some int) None & info ["jobs";"j"] ~docv:"INT" ~doc:
+        "Number of building jobs to run in parallel. NOTE: parallel builds are \
+         experimental and may hang, use is discouraged unless for testing \
+         purposes."
 
     type t = {
       contents_dir: string;
@@ -184,22 +201,33 @@ module Args = struct
       lessons: bool option;
       exercises: bool option;
       toplevel: bool option;
+      login_welcome_text: string option;
+      nickname_text: string option;
     }
 
+    let apply
+        repo_dir contents_dir try_ocaml lessons exercises toplevel
+        exercises_filtered jobs
+      =
+      
+
     let term =
-      let apply repo_dir contents_dir
-          try_ocaml lessons exercises toplevel exercises_filtered jobs =
-        Learnocaml_process_exercise_repository.exercises_dir :=
-          repo_dir/"exercises";
-        Learnocaml_process_exercise_repository.exercises_filtered :=
-          Learnocaml_data.SSet.of_list (List.flatten exercises_filtered);
-        Learnocaml_process_tutorial_repository.tutorials_dir :=
-          repo_dir/"tutorials";
-        Learnocaml_process_exercise_repository.n_processes := jobs;
-        { contents_dir; try_ocaml; lessons; exercises; toplevel }
-      in
       Term.(const apply $repo_dir $contents_dir
             $try_ocaml $lessons $exercises $toplevel $exercises_filtered $jobs)
+
+    let apply repo_dir contents_dir
+        try_ocaml lessons exercises toplevel exercises_filtered jobs =
+      Learnocaml_process_exercise_repository.exercises_dir :=
+        repo_dir/"exercises";
+      Learnocaml_process_exercise_repository.exercises_filtered :=
+        Learnocaml_data.SSet.of_list (List.flatten exercises_filtered);
+      Learnocaml_process_tutorial_repository.tutorials_dir :=
+        repo_dir/"tutorials";
+      Learnocaml_process_exercise_repository.n_processes := jobs;
+      { contents_dir; try_ocaml; lessons; exercises; toplevel;
+        login_welcome_text = None;
+        nickname_text = None;
+      }
 
   end
 
@@ -210,6 +238,7 @@ module Args = struct
 
   type t = {
     commands: command list;
+    config_file: string option;
     app_dir: string;
     repo_dir: string;
     grader: Grader.t;
@@ -218,10 +247,35 @@ module Args = struct
   }
 
   let term =
-    let apply commands app_dir repo_dir grader builder server =
-      { commands; app_dir; repo_dir; grader; builder; server }
+    let apply commands config_file app_dir repo_dir grader builder server =
+      let config_file, conf = match config_file with
+        | Some f -> config_file, CF.load f
+        | None ->
+            if Sys.file_exists CF.default_filename
+            then CF.(Some default_filename, load default_filename)
+            else None, CF.default
+      in
+      let ( +! ) o v = match o with None -> v | Some v -> v in
+      let ( + ) opt cfg = match opt with None -> cfg | some -> some in
+      {
+        commands;
+        config_file;
+        app_dir = app_dir +! "www/";
+        repo_dir = ".";
+        grader;
+        builder = Builder.{
+            builder with
+            try_ocaml = builder.try_ocaml + conf.CF.enable_tryocaml;
+            lessons = builder.lessons + conf.CF.enable_lessons;
+            exercises = builder.exercises + conf.CF.enable_exercises;
+            toplevel = builder.toplevel + conf.CF.enable_toplevel;
+            login_welcome_text = conf.CF.login_welcome_text;
+            nickname_text = conf.CF.nickname_text;
+          };
+        server;
+      }
     in
-    Term.(const apply $commands $app_dir $repo_dir
+    Term.(const apply $commands $config_file $app_dir $repo_dir
           $Grader.term $Builder.term $Server.term app_dir)
 end
 
@@ -265,13 +319,14 @@ let main o =
                  (readlink o.builder.Builder.contents_dir)
            | e -> Lwt.fail e)
        >>= fun () ->
-       let if_enabled opt dir f = (match opt with
-           | None ->
-               Lwt.catch (fun () ->
-                   Lwt_unix.stat dir >|= fun st -> st.Unix.st_kind = Unix.S_DIR)
-                 (function Unix.Unix_error _ -> Lwt.return_false
-                         | e -> Lwt.fail e)
-           | Some opt -> Lwt.return opt)
+       let if_enabled opt dir f =
+         (match opt with
+          | None ->
+              Lwt.catch (fun () ->
+                  Lwt_unix.stat dir >|= fun st -> st.Unix.st_kind = Unix.S_DIR)
+                (function Unix.Unix_error _ -> Lwt.return_false
+                        | e -> Lwt.fail e)
+          | Some opt -> Lwt.return opt)
          >>= fun enabled ->
          if enabled then f dir >>= Lwt.return_some else Lwt.return_none
        in
@@ -354,9 +409,11 @@ let man = [
   `S "GRADER OPTIONS";
   `S "BUILDER OPTIONS";
   `S "SERVER OPTIONS";
+  `S "CONFIGURATION FILE"
+] @ Learnocaml_config_file.doc @ [
   `S "REPOSITORY FORMAT";
   `P "The repository specified by $(b,--repo) is expected to contain \
-      sub-directories $(b,lessons), $(b,tutorials) and $(b,exercises).";
+      sub-directories $(b,lessons), $(b,tutorials) and/or $(b,exercises).";
   `S "AUTHORS";
   `P "Learn OCaml is written by OCamlPro. Its main authors are Benjamin Canou, \
       Çağdaş Bozman and Grégoire Henry. It is licensed under the GNU Affero \
