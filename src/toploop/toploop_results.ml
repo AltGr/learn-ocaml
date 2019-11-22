@@ -11,14 +11,11 @@ type 'a toplevel_result =
   | Ok of 'a * warning list
   | Error of error * warning list
 
-and error =
-  { msg: string;
-    locs: loc list;
-    if_highlight: string; }
+and error = Location.report
 
 and warning = error
 
-and loc = {
-  loc_start: int * int;
-  loc_end: int * int;
-}
+and loc = Location.t(* {
+ *   loc_start: int * int;
+ *   loc_end: int * int;
+ * } *)

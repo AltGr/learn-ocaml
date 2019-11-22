@@ -8,20 +8,20 @@
 
 type 'a toplevel_result = 'a Toploop_results.toplevel_result =
   (* ('a * warning list, error * warning list) result = *)
-  | Ok of 'a * warning list
-  | Error of error * warning list
+  | Ok of 'a * Location.report list
+  | Error of error * Location.report list
 
-and error = Toploop_results.error =
-  { msg: string;
-    locs: loc list;
-    if_highlight: string; }
+and error = Toploop_results.error (* =
+   * { msg: string;
+   *   locs: loc list;
+   *   if_highlight: string; } *)
 
 and warning = error
 
-and loc = Toploop_results.loc  = {
-  loc_start: int * int;
-  loc_end: int * int;
-}
+and loc = Toploop_results.loc (*=  {
+ *   loc_start: int * int;
+ *   loc_end: int * int;
+ * } *)
 
 module Ppx = struct
 
@@ -59,75 +59,68 @@ end
 
 let warnings = ref []
 
-let convert_loc loc =
-  let _file1,line1,col1 = Location.get_pos_info (loc.Location.loc_start) in
-  let _file2,line2,col2 = Location.get_pos_info (loc.Location.loc_end) in
-  { loc_start = (line1, col1) ; loc_end = (line2, col2) }
+(* let convert_loc loc =
+ *   let _file1,line1,col1 = Location.get_pos_info (loc.Location.loc_start) in
+ *   let _file2,line2,col2 = Location.get_pos_info (loc.Location.loc_end) in
+ *   { loc_start = (line1, col1) ; loc_end = (line2, col2) } *)
 
 let () =
-  Location.warning_printer :=
-    (fun loc _fmt w ->
-       if Warnings.is_active w then begin
-         let buf = Buffer.create 503 in
-         let ppf = Format.formatter_of_buffer buf in
-         Location.print ppf loc;
-         Format.fprintf ppf "Warning %a@." Warnings.print w;
-         let msg = Buffer.contents buf in
-         Buffer.reset buf;
-         Format.fprintf ppf "Warning %a@." Warnings.print w;
-         let if_highlight = Buffer.contents buf in
-         let loc = convert_loc loc in
-         warnings := { msg; locs = [loc]; if_highlight } :: !warnings
-       end)
+  Location.warning_reporter :=
+    (fun loc w ->
+       match Location.report_warning loc w with
+       | Some r -> warnings := r :: !warnings; Some r
+       | None -> None)
 
 let return_success (e: 'a) : 'a toplevel_result = Ok (e, !warnings)
 let return_error e : 'a toplevel_result  = Error (e, !warnings)
 (* let return_unit_success = return_success () *)
 
 (** Error handling *)
-let dummy_ppf = Format.make_formatter (fun _ _ _ -> ()) (fun () -> ())
+(* let dummy_ppf = Format.make_formatter (fun _ _ _ -> ()) (fun () -> ()) *)
 
-let rec report_error_rec hg_ppf ppf {Location.loc; msg; sub; if_highlight} =
-  Location.print ppf loc;
-  Format.pp_print_string ppf msg;
-  let hg_ppf =
-    if if_highlight <> "" then
-      (Format.pp_print_string hg_ppf if_highlight; dummy_ppf)
-    else
-      (Format.pp_print_string hg_ppf msg; hg_ppf) in
-  let locs =
-    List.concat @@
-    List.map
-      (fun err ->
-         Format.pp_force_newline ppf ();
-         Format.pp_open_box ppf 2;
-         let locs = report_error_rec hg_ppf ppf err in
-         Format.pp_close_box ppf ();
-         locs)
-      sub in
-  convert_loc loc :: locs
-
-let report_error err =
-  let buf = Buffer.create 503 in
-  let ppf = Format.formatter_of_buffer buf in
-  let hg_buf = Buffer.create 503 in
-  let hg_ppf = Format.formatter_of_buffer hg_buf in
-  let locs = report_error_rec hg_ppf ppf err in
-  Format.pp_print_flush ppf ();
-  Format.pp_print_flush hg_ppf ();
-  let msg = Buffer.contents buf in
-  let if_highlight = Buffer.contents hg_buf in
-  { msg; locs; if_highlight; }
+(* let rec report_error_rec hg_ppf ppf {Location.loc; kind; sub; main} =
+ *   Location.print ppf loc;
+ *   Format.pp_print_string ppf msg;
+ *   let hg_ppf =
+ *     if if_highlight <> "" then
+ *       (Format.pp_print_string hg_ppf if_highlight; dummy_ppf)
+ *     else
+ *       (Format.pp_print_string hg_ppf msg; hg_ppf) in
+ *   let locs =
+ *     List.concat @@
+ *     List.map
+ *       (fun err ->
+ *          Format.pp_force_newline ppf ();
+ *          Format.pp_open_box ppf 2;
+ *          let locs = report_error_rec hg_ppf ppf err in
+ *          Format.pp_close_box ppf ();
+ *          locs)
+ *       sub in
+ *   convert_loc loc :: locs
+ *
+ * let report_error err =
+ *   let buf = Buffer.create 503 in
+ *   let ppf = Format.formatter_of_buffer buf in
+ *   let hg_buf = Buffer.create 503 in
+ *   let hg_ppf = Format.formatter_of_buffer hg_buf in
+ *   let locs = report_error_rec hg_ppf ppf err in
+ *   Format.pp_print_flush ppf ();
+ *   Format.pp_print_flush hg_ppf ();
+ *   let msg = Buffer.contents buf in
+ *   let if_highlight = Buffer.contents hg_buf in
+ *   { msg; locs; if_highlight; } *)
 
 let error_of_exn exn =
   match Location.error_of_exn exn with
-  | None ->
+  | None | Some `Already_displayed ->
       let msg = match exn with
         | Failure msg -> msg
         | exn -> Printexc.to_string exn
       in
-      { msg; locs = []; if_highlight = msg }
-  | Some error -> report_error error
+      let main = { Location.txt = (fun fmt -> Format.fprintf fmt "%s" msg);
+                   loc = Location.none } in
+      { Location.main; sub = []; kind = Report_error }
+  | Some (`Ok report) -> report
 
 let return_exn exn = return_error (error_of_exn exn)
 
@@ -270,8 +263,8 @@ let use_mod_string
 let check_phrase env = function
   | Parsetree.Ptop_def sstr ->
       Typecore.reset_delayed_checks ();
-      let (str, sg, newenv) = Typemod.type_toplevel_phrase env sstr in
-      let sg' = Typemod.simplify_signature sg in
+      let (str, sg, sn, newenv) = Typemod.type_toplevel_phrase env sstr in
+      let sg' = Typemod.Signature_names.simplify newenv sn sg in
       ignore (Includemod.signatures env sg sg');
       Typecore.force_delayed_checks ();
       let _lam = Translmod.transl_toplevel_definition str in
@@ -296,4 +289,3 @@ let check ?(setenv = false) code =
   with
   | End_of_file -> return_success ()
   | exn -> return_exn exn
-

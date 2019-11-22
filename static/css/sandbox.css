@@ -25,12 +25,60 @@
     --code-variable: #f8f8f8 /*#fb9a4b*/;
     --code-keyword: #ffaa00;
     --code-meta: #9df39f;
+}
 
-
+@media (height < 820px) {
+  :root {
+    --topbar-height: 40px;
+    --gap: 5px;
+    --button-height: 37px;
+  }
+}
+@media (height >= 820px) {
+  :root {
     --topbar-height: 70px;
     --gap: 10px;
     --button-height: 37px;
+  }
 }
+
+/* @media (width < 550px) {
+ *   /\* #learnocaml-exo-tabs {
+ *    *   top: 50px;
+ *    * }
+ *    * #learnocaml-exo-toolbar {
+ *    *   height: 40px;
+ *    * }
+ *    * .logo {
+ *    *   line-height: 28px;
+ *    *   font-size: 28px;
+ *    *   padding: 6px;
+ *    * }
+ *    * .logo img {
+ *    *   vertical-align: -3px;
+ *    *   height: 26px;
+ *    * } *\/
+ *   .buttons .label {
+ *     display: none;
+ *   }
+ * }
+ * @media(max-width: 799px) {
+ *   div.buttons {
+ *     margin-bottom: 0;
+ *     height: 37px;
+ *   }
+ *   div.pane {
+ *     height: calc(100% - 47px);
+ *   }
+ * }
+ * @media(max-width: 1599px) {
+ *   #learnocaml-exo-tabs > div:not(.front-tab) {
+ *     display: none;
+ *   }
+ * } */
+
+
+
 
 body {
   font-family: 'Fontin', 'Linux Biolinum', sans-serif;
@@ -250,8 +298,8 @@ button:last-child {
 
 /* @media (min-width: 550px) { */
   .logo {
-    line-height: calc(--var(topbar-height) - 26px);
-    font-size: calc(--var(topbar-height) - 30px);
+    line-height: calc(var(--topbar-height) - 26px);
+    font-size: calc(var(--topbar-height) - 30px);
     padding: 8px;
   }
   .logo img {
@@ -835,12 +883,8 @@ div.gap-column {
 }
 
 
+
 @media (max-width: 549px) {
-  :root {
-    --topbar-height: 40px;
-    --gap: 5px;
-    --button-height: 37px;
-  }
   /* #learnocaml-exo-tabs {
    *   top: 50px;
    * }

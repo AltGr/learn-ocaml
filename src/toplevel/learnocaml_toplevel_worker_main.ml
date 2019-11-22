@@ -6,6 +6,7 @@
  * Learn-OCaml is distributed under the terms of the MIT license. See the
  * included LICENSE file for details. *)
 
+open Js_of_ocaml
 open Learnocaml_toplevel_worker_messages
 
 let debug = ref false
@@ -34,7 +35,7 @@ let unwrap_result =
 
 module IntMap = Map.Make(struct
     type t = int
-    let compare (x:int) (y:int) = Pervasives.compare x y
+    let compare (x:int) (y:int) = compare x y
   end)
 
 (* Limit the frequency of sent messages to one per ms, using an active
@@ -193,11 +194,12 @@ let handler : type a. a host_msg -> a return Lwt.t = function
             Ast_helper.(Typ.constr (Location.mknoloc (Longident.Lident "unit")) []) in
           { Parsetree.ptyp_desc = Parsetree.Ptyp_arrow (Asttypes.Nolabel, arg, ret) ;
             ptyp_loc = Location.none ;
-            ptyp_attributes = [] } in
+            ptyp_attributes = [];
+            ptyp_loc_stack = [] } in
         Typetexp.transl_type_scheme !Toploop.toplevel_env ast in
       Toploop.toplevel_env :=
         Env.add_value
-          (Ident.create name)
+          (Ident.create_local name)
           { Types.
             val_type = ty.Typedtree.ctyp_type;
             val_kind = Types.Val_reg;
@@ -246,7 +248,7 @@ let () =
            Js.Unsafe.set cmi (Js.string "t") 9 ; (* XXX hack *)
            Some cmi
        | exception Not_found -> None) ;
-  Config.load_path := [ path ] ;
+  Load_path.init [ path ] ;
   Toploop_jsoo.initialize ();
   Hashtbl.add Toploop.directive_table
     "debug_worker"

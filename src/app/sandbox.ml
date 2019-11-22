@@ -173,19 +173,30 @@ let () =
       match res with
       | Toploop_results.Ok ((), warnings) -> None, warnings
       | Toploop_results.Error (err, warnings) -> Some err, warnings in
-    let transl_loc { Toploop_results.loc_start ; loc_end } =
-      { Ocaml_mode.loc_start ; loc_end } in
+    let transl_loc loc =
+      let open Location in
+      let transl_pos pos = Lexing.(pos.pos_lnum, pos.pos_cnum - pos.pos_bol) in
+      { Ocaml_mode.
+        loc_start = transl_pos loc.loc_start;
+        loc_end = transl_pos loc.loc_end;
+      }
+    in
+    let transl_rep rep =
+      List.map (fun l ->
+          let loc = transl_loc l.Location.loc in
+          let msg =
+            l.Location.txt Format.str_formatter;
+            Buffer.contents Format.stdbuf
+          in
+          { Ocaml_mode.loc; msg })
+        Location.(rep.main::rep.sub)
+    in
     let error = match error with
       | None -> None
-      | Some { Toploop_results.locs ; msg ; if_highlight } ->
-          Some { Ocaml_mode.locs = List.map transl_loc locs ;
-                 msg = (if if_highlight <> "" then if_highlight else msg) } in
+      | Some rep -> Some (transl_rep rep)
+    in
     let warnings =
-      List.map
-        (fun { Toploop_results.locs ; msg ; if_highlight } ->
-           { Ocaml_mode.loc = transl_loc (List.hd locs) ;
-             msg = (if if_highlight <> "" then if_highlight else msg) })
-        warnings in
+      List.map transl_rep warnings in
     Ocaml_mode.report_error ~set_class editor error warnings  >>= fun () ->
     Ace.focus ace ;
     Lwt.return () in

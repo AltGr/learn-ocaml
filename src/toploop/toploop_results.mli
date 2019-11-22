@@ -8,17 +8,17 @@
 
 type 'a toplevel_result =
   (* ('a * warning list, error * warning list) result = *)
-  | Ok of 'a * warning list
-  | Error of error * warning list
+  | Ok of 'a * Location.report list
+  | Error of error * Location.report list
 
-and error =
-  { msg: string;
-    locs: loc list;
-    if_highlight: string; }
+and error = Location.report
+  (* { msg: string;
+   *   locs: loc list;
+   *   if_highlight: string; } *)
 
 and warning = error
 
-and loc = {
+and loc = Location.t (*{
   loc_start: int * int;
   loc_end: int * int;
-}
+}*)
