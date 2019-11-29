@@ -99,8 +99,9 @@ let () =
     | _ -> try arg "id" with Not_found -> "sandbox"
   in
   Dom_html.document##.title :=
-    Js.string (id ^ " - " ^ "Learn OCaml" ^" v."^ Learnocaml_api.version);
+    Js.string ("TryOCaml");
   let after_init top =
+    log "TOPLEVEL LAUNCH after_init";
     Learnocaml_toplevel.set_checking_environment top
   in
   let timeout_prompt =
@@ -134,6 +135,7 @@ let () =
   log "init_tabs";
   log "toplevel launch";
   toplevel_launch >>= fun top ->
+  log "TOPLEVEL LAUNCHED";
   let solution =
     match Learnocaml_local_storage.(retrieve (exercise_state id)) with
     | { Answer.solution ; _ } -> Some solution

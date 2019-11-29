@@ -67,7 +67,9 @@
        %{ocaml-config:standard_library}/stdlib__hashtbl.cmi
        %{ocaml-config:standard_library}/stdlib__set.cmi
        %{ocaml-config:standard_library}/stdlib__map.cmi
-       %{ocaml-config:standard_library}/topdirs.cmi
+       %{ocaml-config:standard_library}/compiler-libs/outcometree.cmi
+       %{ocaml-config:standard_library}/compiler-libs/topdirs.cmi
+       %{ocaml-config:standard_library}/compiler-libs/toploop.cmi
        %{ocaml-config:standard_library}/stdlib__int32.cmi
        %{ocaml-config:standard_library}/stdlib__int64.cmi)
  (action (with-stdout-to %{targets} (run ocp-ocamlres -format ocamlres %{deps})))

@@ -8,23 +8,42 @@
             toploop_results)
 )
 
+;; (rule
+;;  (target cmilist)
+;;  (action (with-stdout-to %{target} (echo Embedded_cmis))))
+
 (executable
  (name learnocaml_toplevel_worker_main)
- (modes byte)
+ (modes (byte js))
  (flags :standard -w -41 -warn-error -4-42-44-45-48-32-27)
  (link_flags :standard -linkall)
  (libraries jsutils
             js_of_ocaml
+;;            js_of_ocaml-compiler
+;;            js_of_ocaml-toplevel
             js_of_ocaml.ppx
             toploop_jsoo
-            toploop_results
             ocplib-ocamlres.runtime
             embedded_cmis
             learnocaml_toplevel_worker_messages)
+;; (link_deps cmilist)
  (modules Learnocaml_toplevel_worker_main)
  (preprocess (pps js_of_ocaml.ppx))
- (js_of_ocaml (flags :standard +dynlink.js +toplevel.js
-                     --toplevel --nocmis))
+ (js_of_ocaml
+  (flags
+   :standard
+;; $ (cd _build/default/src/toplevel && /home/lg/ocamlpro/learn-ocaml/_opam/bin/js_of_ocaml --toplevel --export cmilist +toplevel.js +dynlink.js -o learnocaml_toplevel_worker_main.bc.js --no-runtime /home/lg/ocamlpro/learn-ocaml/_opam/lib/js_of_ocaml-compiler/runtime.js learnocaml_toplevel_worker_main.bc)
+
+
+   --toplevel
+   --nocmis
+;;   --export cmilist
+   --no-extern-fs
+   --pretty
+;;   --source-map-inline
+   +toplevel.js
+   +dynlink.js)
+  )
 )
 
 (library

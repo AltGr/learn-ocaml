@@ -19,7 +19,71 @@ let split_primitives p =
       split beg (cur + 1) in
   Array.of_list(split 0 0)
 
+let log fmt = Printf.ksprintf (fun s -> Firebug.console##log (Js.string s)) fmt
+
+let cmi_of_string str =
+  let cmi_magic_number = "Caml1999I025" in
+  let sz = String.length cmi_magic_number in
+  let magic = String.sub str 0 sz in
+  if magic <> cmi_magic_number then failwith "Bad cmi magic number" else
+  let str = Bytes.of_string str in
+  let (name, sign) = Marshal.from_bytes str sz in
+  let sz = sz + Marshal.total_size str sz in
+  let crcs = Marshal.from_bytes str sz in
+  let sz = sz + Marshal.total_size str sz in
+  let flags = Marshal.from_bytes str sz in
+  {
+    Cmi_format.
+    cmi_name = name;
+    cmi_sign = sign;
+    cmi_crcs = crcs;
+    cmi_flags = flags;
+  }
+
+
 let setup = lazy (
+  log "Topdirs.dir_directory";
+  (* Topdirs.dir_directory "/static/cmis";
+   * Topdirs.dir_directory "/cmis"; *)
+  Topdirs.dir_directory "/worker_cmis";
+  (* Topdirs.dir_directory "/stdlib"; *)
+
+  Persistent_env.Persistent_signature.load := (fun ~unit_name ->
+      log "LOAD %s" unit_name;
+       match OCamlRes.Res.find  (OCamlRes.Path.of_string
+                                  (String.uncapitalize_ascii unit_name ^ ".cmi"))
+               Embedded_cmis.root
+       with
+       | cmi ->
+           log "FILE FOUND %s" unit_name;
+           Js.Unsafe.set cmi (Js.string "t") 9 ; (* XXX hack *)
+           Some {
+             Persistent_env.Persistent_signature.
+             filename = "//" ^ unit_name ^ ".cmi//";
+             cmi = cmi_of_string cmi;
+           }
+       | exception Not_found ->
+           match OCamlRes.Res.find (OCamlRes.Path.of_string
+                                      ("stdlib__" ^ String.uncapitalize_ascii unit_name ^ ".cmi"))
+                   Embedded_cmis.root
+           with
+       | cmi ->
+           log "FILE FOUND2 %s" unit_name;
+           Js.Unsafe.set cmi (Js.string "t") 9 ; (* XXX hack *)
+           Some {
+             Persistent_env.Persistent_signature.
+             filename = "//stdlib__" ^ unit_name ^ ".cmi//";
+             cmi = cmi_of_string cmi;
+           }
+       | exception Not_found ->
+           log "FILE NOT FOUND %s" unit_name;
+           None) ;
+      (* match Load_path.find_uncap (unit_name ^ ".cmi") with
+       * | filename -> Some { Persistent_env.Persistent_signature.filename; cmi = Cmi_format.read_cmi filename }
+       * | exception Not_found ->
+       *     log "%s NOT FOUND" unit_name;
+       *     None ); *)
+
   Hashtbl.add Toploop.directive_table "enable"
     (Toploop.Directive_string Config.Flag.enable);
   Hashtbl.add Toploop.directive_table "disable"
@@ -34,11 +98,13 @@ let setup = lazy (
   Clflags.error_size := 0 ;
   (* Disable inlining of JSOO which may blow the JS stack *)
   Config.Flag.disable "inline" ;
-  Topdirs.dir_directory "/cmis";
+  (* Toploop.initialize_toplevel_env (); *)
+
   let initial_primitive_count =
     Array.length (split_primitives (Symtable.data_primitive_names ())) in
 
   let compile s =
+    let s = String.concat "" (Array.to_list s) in
     let prims =
       split_primitives (Symtable.data_primitive_names ()) in
     let unbound_primitive p =
@@ -54,12 +120,14 @@ let setup = lazy (
       prims;
     let output_program = Driver.from_string prims s in
     let b = Buffer.create 100 in
+    log "output_program";
     output_program (Pretty_print.to_buffer b);
     Format.(pp_print_flush std_formatter ());
     Format.(pp_print_flush err_formatter ());
     flush stdout; flush stderr;
     let res = Buffer.contents b in
     let res = String.concat "" !stubs ^ res in
+    log "toplevelEval";
     Js.Unsafe.global##(toplevelEval res)
   in
   Js.Unsafe.global##.toplevelCompile := compile (*XXX HACK!*);
@@ -70,11 +138,42 @@ let setup = lazy (
          Format.(pp_print_flush std_formatter ());
          Format.(pp_print_flush err_formatter ());
          flush stdout; flush stderr;
-         res)))
+         res));
+  Js.Unsafe.global##.toplevelReloc :=
+    Js.Unsafe.callback (fun name ->
+        let name = Js.to_string name in
+        Js_of_ocaml_compiler.Ocaml_compiler.Symtable.reloc_ident name);
+  ())
 
 let initialize () =
-  Lazy.force setup ;
-  Toploop.initialize_toplevel_env ()
+  (* Toploop.set_paths ();
+   * Lazy.force setup ;
+   * log "init_top_env";
+   * Toploop.initialize_toplevel_env () *)
+
+  Clflags.nopervasives := true;
+  (* Clflags.open_modules := ["Stdlib"]; *)
+  (* Sys.interactive := false; *)
+  Lazy.force setup;
+  (* Clflags.include_dirs := ["/worker_cmis"]; *)
+  log "init_top_env %s" (String.concat "," !Clflags.include_dirs);
+
+
+  Toploop.initialize_toplevel_env ();
+(*
+  Ident.reinit ();
+  Toploop.toplevel_env :=
+    Typemod.initial_env
+      ~loc:(Location.in_file "TryOCaml init")
+      ~safe_string:true
+      ~initially_opened_module:None
+      ~open_implicit_modules:["Stdlib"];
+*)
+  log "init_top_env OK";
+  
+  Toploop.input_name := "//toplevel//"
+  (* Sys.interactive := true *)
+
 
 type redirection =
   { channel : out_channel ;

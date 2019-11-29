@@ -257,7 +257,7 @@ button:last-child {
 }
 .loading-layer .messages ul li {
   list-style: none;
-  opacity: 0.1;
+  /* opacity: 0.1; */
   font-size: 16px; line-height: 18px;
 }
 

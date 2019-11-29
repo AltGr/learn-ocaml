@@ -9,7 +9,11 @@
 open Js_of_ocaml
 open Learnocaml_toplevel_worker_messages
 
-let debug = ref false
+let log fmt = Printf.ksprintf (fun s -> Firebug.console##log (Js.string s)) fmt
+
+let () = log "LOADING toplevel_worker_main"
+
+let debug = ref true
 
 let (>>=) = Lwt.bind
 
@@ -44,7 +48,8 @@ module IntMap = Map.Make(struct
    program.
 
    The problem arises with debug off and developper tools off only.
-   In this case, with a program that does a lot of writes (print or
+   In this case, with a procck12088
+gram that does a lot of writes (print or
    callbacks), the messages queue fills up super quickly and kills the
    browser / tab.
 
@@ -54,15 +59,18 @@ module IntMap = Map.Make(struct
    does a big computation just after a bufferized write. And it would
    still need some kind of active waiting to limit throughput. All in
    all this spinwait is not that ugly. *)
-let last = ref 0.
-let rec wait () =
-  let now = Sys.time () (* let's hope this yields a bit *) in
-  if now -. !last > 0.001 then
-    last := now
-  else wait ()
+let wait =
+  let last = ref 0. in
+  let rec aux () =
+    let now = Sys.time () (* let's hope this yields a bit *) in
+    if now -. !last > 0.001 then last := now
+    else aux ()
+  in
+  aux
 
 let post_message (m: toploop_msg) =
   wait () ;
+  Firebug.console##log (Json.output m);
   Worker.post_message (Json.output m)
 
 let (wrap_fd, close_fd, clear_fds) =
@@ -184,6 +192,8 @@ let handler : type a. a host_msg -> a return Lwt.t = function
       debug := b;
       return_unit_success
   | Register_callback (name, fd) ->
+      Js_utils.debug
+        "Worker: <- REGISTER CALLBACK %s" name;
       let callback text =
         post_message (Write (fd, text)) ; () in
       let ty =
@@ -207,6 +217,8 @@ let handler : type a. a host_msg -> a return Lwt.t = function
             val_loc = Location.none }
           !Toploop.toplevel_env ;
       Toploop.setvalue name (Obj.repr callback) ;
+      Js_utils.debug
+        "Worker: <- REGISTER CALLBACK %s DONE" name;
       return_unit_success
   | Check code ->
       let saved = !Toploop.toplevel_env in
@@ -227,6 +239,7 @@ let ty_of_host_msg : type t. t host_msg -> t msg_ty = function
   | Register_callback _ -> Unit
 
 let () =
+  log "load main";
   let handler (type t) data =
     let (id, data) : (int * t host_msg) = Json.unsafe_input data  in
     let ty = ty_of_host_msg data in
@@ -241,16 +254,32 @@ let () =
         Lwt.return_unit
   in
   let path = "/worker_cmis" in
+  log "Sys_js.mount";
   Sys_js.mount ~path
     (fun ~prefix:_ ~path ->
+       log "sysjs.mount lookup %s" path;
        match OCamlRes.Res.find (OCamlRes.Path.of_string path) Embedded_cmis.root with
        | cmi ->
+           log "FILE FOUND %s" path;
            Js.Unsafe.set cmi (Js.string "t") 9 ; (* XXX hack *)
            Some cmi
-       | exception Not_found -> None) ;
-  Load_path.init [ path ] ;
-  Toploop_jsoo.initialize ();
+       | exception Not_found ->
+           log "FILE NOT FOUND %s" path;
+           None) ;
+  (* Load_path.init [ path ] ; *)
+  log "Toploop.init";
+  (try Toploop_jsoo.initialize () with
+   | Typetexp.Error (loc, env, error) ->
+       log "FAILED INIT %s" (Format.asprintf "%a at %a"
+                               (Typetexp.report_error env) error
+                               Location.print_loc loc)
+   | e -> log "FAILED INIT %s" (Printexc.to_string e))
+  ;
   Hashtbl.add Toploop.directive_table
     "debug_worker"
     (Toploop.Directive_bool (fun b -> debug := b));
-  Worker.set_onmessage (fun s -> Lwt.async (fun () -> handler s))
+  log "set_onmessage";
+  let open Lwt.Infix in
+  Worker.set_onmessage (fun s -> Lwt.async (fun () -> log "WORKER ONMESSAGE %s" (Js.to_string s); handler s >|= fun x -> log "WORKER ONMESSAGE END"; x));
+  log "done"
+

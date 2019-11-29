@@ -19,7 +19,7 @@
  (wrapped false)
  (modes byte)
  (flags :standard -warn-error A-4-42-44-45-48-9-58)
- (libraries js_of_ocaml.compiler toploop)
+ (libraries js_of_ocaml.compiler toploop ocplib-ocamlres.runtime embedded_cmis)
  (modules Toploop_jsoo)
  (preprocess (pps js_of_ocaml.ppx))
 )

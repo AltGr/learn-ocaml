@@ -443,6 +443,7 @@ let create
   Learnocaml_toplevel_worker_caller.create
     ?js_file:worker_js_file
     ~pp_stdout ~pp_stderr () >>= fun worker ->
+  log "TOPLEVEL WORKER CALLER STARTED";
   let top = {
     timeout_prompt;
     current_timeout_prompt = Lwt.return ();
@@ -471,6 +472,7 @@ let create
           | exn -> Lwt.fail exn )) ;
   let first_time = ref true in
   let after_init top =
+    Js_utils.log "AFTER INIT";
     if !first_time || not oldify then
       Learnocaml_toplevel_output.clear output
     else
@@ -482,6 +484,10 @@ let create
       | `Idle | `Execute _ -> assert false
     end ;
     top.status <- `Idle;
+    Learnocaml_toplevel_worker_caller.execute
+      ~pp_answer: (fun _ -> ())
+      ~print_outcome: false
+      worker ("open Stdlib") >>= fun _ ->
     begin if display_welcome && (!first_time || not oldify) then
         Learnocaml_toplevel_worker_caller.execute
           ~pp_answer: (fun _ -> ())
@@ -503,6 +509,7 @@ let create
     | Some f -> f top in
   after_init top >>= fun () ->
   Learnocaml_toplevel_worker_caller.set_after_init top.worker (fun _ -> after_init top);
+  Js_utils.debug "top!";
   Lwt.return top
 
 let print_string { output; _ } = Learnocaml_toplevel_output.output_stdout output

@@ -7,7 +7,7 @@
  * included LICENSE file for details. *)
 
 open Js_of_ocaml
-let debug = ref false
+let debug = ref true
 
 let (>>=) = Lwt.bind
 let (>>?) o f =
@@ -154,10 +154,25 @@ let rec post : type a. t -> a host_msg -> a Toploop_results.toplevel_result Lwt.
     if !debug then Js_utils.debug "Host: queuing %d" msg_id;
     let (t, u) = Lwt.task () in
     Lwt.on_cancel t
-      (fun () -> Lwt.async (fun () -> worker.reset_worker worker));
+      (fun () -> Js_utils.debug "CANCELLED %d" msg_id;
+        Lwt.async (fun () -> worker.reset_worker worker));
     worker.wakeners <- IntMap.add msg_id (U (msg_ty, u, t)) worker.wakeners;
     worker.counter <- msg_id + 1;
-    worker.worker##(postMessage (Json.output (msg_id, msg)));
+    (try
+       Js_utils.debug "POST %d %s" msg_id (match msg with
+           | Init -> "init"
+           | Reset -> "reset"
+           | Execute (_,_,_,s) -> Printf.sprintf "exec %s" s
+           | Use_string (_,_,_,s) -> Printf.sprintf "use_str %s" s
+           | Use_mod_string (_,_,_,_,s) -> Printf.sprintf "use_mod_str %s" s
+           | Set_debug b -> Printf.sprintf "set_debug %b" b
+           | Register_callback (s,n) -> Printf.sprintf "register_callback %s %d" s n
+           | Set_checking_environment -> "set_checking_environment"
+           | Check s -> Printf.sprintf "check %s" s
+         );
+       worker.worker##(postMessage (Json.output (msg_id, msg)));
+       Js_utils.debug "POSTED %d" msg_id;
+     with e -> Js_utils.debug "WORKER KAPUTT %d: %s" msg_id (Printexc.to_string e));
     t
 
 and do_reset_worker () =
@@ -194,7 +209,9 @@ let create
     ?(pp_stdout = (fun text -> Firebug.console##(log (Js.string text))))
     ?(pp_stderr = (fun text -> Firebug.console##(log (Js.string text))))
     () =
+  Js_utils.debug "WORKER CREATE";
   let worker = Worker.create js_file in
+  Js_utils.debug "WORKER CREATED";
   let fds =
     IntMap.empty |>
     IntMap.add 0 pp_stdout |>
@@ -205,9 +222,13 @@ let create
       reset_worker = do_reset_worker ();
       after_init; pp_stdout; pp_stderr;
     } in
+  Js_utils.debug "caller: set_onmessage";
   (Obj.magic worker.worker)##.onmessage := Js.wrap_callback (onmessage worker);
+  Js_utils.debug "caller: post";
   post worker @@ Init >>= fun _ ->
+  Js_utils.debug "after_init";
   worker.after_init worker >>= fun () ->
+  Js_utils.debug "caller worker OK";
   Lwt.return worker
 
 let create_fd worker pp =
